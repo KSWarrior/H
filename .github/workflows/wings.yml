@@ -54,16 +54,14 @@ jobs:
           
       - name: Wings Config
         run: |
-          sudo su
-          mkdir -p /etc
-          cd etc
-          mkdir -p pterodactyl
-          cd pterodactyl
+          mkdir -p pterodactyl/wings
+          cd pterodactyl/wings
+          mkdir -p config
+          cd config
           wget https://raw.githubusercontent.com/KSWarrior/H/refs/heads/main/config.yml
           
       - name: Start wings
         run: |
-          mkdir -p pterodactyl/wings
           cd pterodactyl/wings
           wget https://raw.githubusercontent.com/KSWarrior/H/refs/heads/main/docker-compose.yml
           docker-compose up -d
