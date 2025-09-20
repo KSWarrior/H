@@ -22,27 +22,44 @@ jobs:
           sudo chmod +x /usr/local/bin/docker-compose
           docker-compose --version
           
-      - name: Download latest /var/lib/pterodactyl backup from Releases
-        continue-on-error: true
-        uses: robinraju/release-downloader@v1.11
-        with:
-          tag: backups
-          fileName: "var-lib-pterodactyl.tar.gz"
-          out-file-path: "."
+      - name: Download latest /var/lib/pterodactyl backup parts from Releases
+      continue-on-error: true
+      uses: robinraju/release-downloader@v1.11
+      with:
+        tag: backups
+        fileName: "var-lib-pterodactyl-us-node-1.part*.tar.gz"
+        out-file-path: "."
 
-      - name: Restore /var/lib/pterodactyl
+    - name: Restore /var/lib/pterodactyl
+      run: |
+        if ls var-lib-pterodactyl-us-node-1.part*.tar.gz 1> /dev/null 2>&1; then
+          echo "✅ Found multipart backup files. Combining and restoring..."
+          cat var-lib-pterodactyl-us-node-1.part*.tar.gz > var-lib-pterodactyl.tar.gz
+          sudo mkdir -p /var/lib/
+          sudo rm -rf /var/lib/pterodactyl
+          sudo tar --same-owner -xzf var-lib-pterodactyl.tar.gz -C /var/lib
+          echo "✅ Restored /var/lib/pterodactyl successfully."
+          sudo ls -R /var/lib/pterodactyl || true
+        else
+          echo "⚠️ No var-lib-pterodactyl-us-node-1.part*.tar.gz found. Using fresh /var/lib/pterodactyl."
+        fi
+          
+      - name: Wings Config
         run: |
-          if [ -f var-lib-pterodactyl.tar.gz ]; then
-            echo "✅ Found var-lib-pterodactyl.tar.gz. Restoring..."
-            sudo mkdir -p /var/lib/
-            sudo rm -rf /var/lib/pterodactyl
-            # Restore with correct ownership and permissions
-            sudo tar --same-owner -xzf var-lib-pterodactyl.tar.gz -C /var/lib
-            echo "✅ Restored /var/lib/pterodactyl successfully."
-            sudo ls -R /var/lib/pterodactyl || true
-          else
-            echo "⚠️ No var-lib-pterodactyl.tar.gz found. Using fresh /var/lib/pterodactyl."
-          fi
+          sudo su
+          mkdir -p /etc
+          cd etc
+          mkdir -p pterodactyl
+          cd pterodactyl
+          wget https://raw.githubusercontent.com/KSWarrior/H/refs/heads/main/config.yml
+          
+      - name: Start wings
+        run: |
+          mkdir -p pterodactyl/wings
+          cd pterodactyl/wings
+          wget https://raw.githubusercontent.com/KSWarrior/H/refs/heads/main/docker-compose.yml
+          docker-compose up -d
+        
       # 11. Run LocalTunnel (keep alive)
       - name: Cloudflare Tunnel
         run: |
@@ -51,20 +68,6 @@ jobs:
           sudo mv cloudflared-linux-amd64 /usr/local/bin/cloudflared
           cloudflared --version
           sudo cloudflared service install eyJhIjoiZTJkZjY3MDI5ZWZlZTBmY2JhM2ExMjNjN2VmNTcxNTAiLCJ0IjoiZjg0NThiMjEtM2IwOS00ZmY0LThiNDMtMjcwMmEzNjQ1NmU4IiwicyI6Ik9ERXpOVGhtT0RndE9UQXhOUzAwTURZNExXSTVOamN0WXpNNU9UQXpOVFE0WkdFMCJ9
-          
-      - name: Wings Config
-        run: |
-          mkdir -p pterodactyl/wings
-          cd pterodactyl/wings
-          mkdir -p config
-          cd config
-          wget https://raw.githubusercontent.com/KSWarrior/H/refs/heads/main/config/us-node-1.yml -O config.yml
-          
-      - name: Start wings
-        run: |
-          cd pterodactyl/wings
-          wget https://raw.githubusercontent.com/KSWarrior/H/refs/heads/main/docker-compose.yml
-          docker-compose up -d
           
      # 6. Keep Panel Alive
       - name: Start Tmate (for debug - non-blocking)
@@ -82,38 +85,37 @@ jobs:
         run: |
           sleep 20000
                      
-      - name: Backup /var/lib/pterodactyl
-        if: always()
-        run: |
-          echo "📦 Creating backup of /var/lib/pterodactyl..."
-          # Exclude unnecessary tmp/cache files to keep backup small
-          sudo tar --exclude='pterodactyl/tmp/*' --exclude='pterodactyl/cache/*' -czf var-lib-pterodactyl.tar.gz -C /var/lib pterodactyl
-          ls -lh var-lib-pterodactyl.tar.gz
+      - name: Backup /var/lib/pterodactyl into multipart files
+      if: always()
+      run: |
+        echo "📦 Creating multipart backup of /var/lib/pterodactyl..."
+        sudo tar --exclude='pterodactyl/tmp/*' --exclude='pterodactyl/cache/*' -czf - -C /var/lib pterodactyl | split -b 500M - var-lib-pterodactyl-us-node-1.part
+        ls -lh var-lib-pterodactyl-us-node-1.part*
 
-      - name: Delete old /var/lib/pterodactyl backup asset
-        if: always()
-        run: |
-          echo "🗑️ Deleting old var-lib-pterodactyl.tar.gz from release..."
-          assets=$(gh release view backups --json assets --jq '.assets[].name' || echo "")
-          for asset in $assets; do
-            if [[ "$asset" == "var-lib-pterodactyl.tar.gz" ]]; then
-              gh release delete-asset backups "$asset" -y || true
-              echo "✅ Deleted old asset: $asset"
-            fi
-          done
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Delete old /var/lib/pterodactyl backup assets
+      if: always()
+      run: |
+        echo "🗑️ Deleting old multipart assets from release..."
+        assets=$(gh release view backups --json assets --jq '.assets[].name' || echo "")
+        for asset in $assets; do
+          if [[ "$asset" == var-lib-pterodactyl-us-node-1.part* ]]; then
+            gh release delete-asset backups "$asset" -y || true
+            echo "✅ Deleted old asset: $asset"
+          fi
+        done
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload /var/lib/pterodactyl Backup to GitHub Release
-        if: always()
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: backups
-          name: "Latest /var/lib/pterodactyl Backup"
-          body: "/var/lib/pterodactyl backup"
-          files: var-lib-pterodactyl.tar.gz
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Upload multipart backup files to GitHub Release
+      if: always()
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: backups
+        name: "Latest /var/lib/pterodactyl Multipart Backup"
+        body: "/var/lib/pterodactyl backup (multipart)"
+        files: var-lib-pterodactyl-us-node-1.part*
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           
       - name: Restart Workflow
         if: always()
