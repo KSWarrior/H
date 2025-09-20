@@ -23,26 +23,26 @@ jobs:
           docker-compose --version
           
       - name: Download latest /var/lib/pterodactyl backup parts from Releases
-      continue-on-error: true
-      uses: robinraju/release-downloader@v1.11
-      with:
-        tag: backups
-        fileName: "var-lib-pterodactyl-us-node-1.part*.tar.gz"
-        out-file-path: "."
+        continue-on-error: true
+        uses: robinraju/release-downloader@v1.11
+        with:
+          tag: backups
+          fileName: "var-lib-pterodactyl-us-node-1.part*.tar.gz"
+          out-file-path: "."
 
-    - name: Restore /var/lib/pterodactyl
-      run: |
-        if ls var-lib-pterodactyl-us-node-1.part*.tar.gz 1> /dev/null 2>&1; then
-          echo "✅ Found multipart backup files. Combining and restoring..."
-          cat var-lib-pterodactyl-us-node-1.part*.tar.gz > var-lib-pterodactyl.tar.gz
-          sudo mkdir -p /var/lib/
-          sudo rm -rf /var/lib/pterodactyl
-          sudo tar --same-owner -xzf var-lib-pterodactyl.tar.gz -C /var/lib
-          echo "✅ Restored /var/lib/pterodactyl successfully."
-          sudo ls -R /var/lib/pterodactyl || true
-        else
-          echo "⚠️ No var-lib-pterodactyl-us-node-1.part*.tar.gz found. Using fresh /var/lib/pterodactyl."
-        fi
+      - name: Restore /var/lib/pterodactyl
+        run: |
+          if ls var-lib-pterodactyl-us-node-1.part*.tar.gz 1> /dev/null 2>&1; then
+            echo "✅ Found multipart backup files. Combining and restoring..."
+            cat var-lib-pterodactyl-us-node-1.part*.tar.gz > var-lib-pterodactyl.tar.gz
+            sudo mkdir -p /var/lib/
+            sudo rm -rf /var/lib/pterodactyl
+            sudo tar --same-owner -xzf var-lib-pterodactyl.tar.gz -C /var/lib
+            echo "✅ Restored /var/lib/pterodactyl successfully."
+            sudo ls -R /var/lib/pterodactyl || true
+          else
+            echo "⚠️ No var-lib-pterodactyl-us-node-1.part*.tar.gz found. Using fresh /var/lib/pterodactyl."
+          fi
           
       - name: Wings Config
         run: |
@@ -86,36 +86,36 @@ jobs:
           sleep 20000
                      
       - name: Backup /var/lib/pterodactyl into multipart files
-      if: always()
-      run: |
-        echo "📦 Creating multipart backup of /var/lib/pterodactyl..."
-        sudo tar --exclude='pterodactyl/tmp/*' --exclude='pterodactyl/cache/*' -czf - -C /var/lib pterodactyl | split -b 500M - var-lib-pterodactyl-us-node-1.part
-        ls -lh var-lib-pterodactyl-us-node-1.part*
+        if: always()
+        run: |
+          echo "📦 Creating multipart backup of /var/lib/pterodactyl..."
+          sudo tar --exclude='pterodactyl/tmp/*' --exclude='pterodactyl/cache/*' -czf - -C /var/lib pterodactyl | split -b 500M - var-lib-pterodactyl-us-node-1.part
+          ls -lh var-lib-pterodactyl-us-node-1.part*
 
-    - name: Delete old /var/lib/pterodactyl backup assets
-      if: always()
-      run: |
-        echo "🗑️ Deleting old multipart assets from release..."
-        assets=$(gh release view backups --json assets --jq '.assets[].name' || echo "")
-        for asset in $assets; do
-          if [[ "$asset" == var-lib-pterodactyl-us-node-1.part* ]]; then
-            gh release delete-asset backups "$asset" -y || true
-            echo "✅ Deleted old asset: $asset"
-          fi
-        done
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Delete old /var/lib/pterodactyl backup assets
+        if: always()
+        run: |
+          echo "🗑️ Deleting old multipart assets from release..."
+          assets=$(gh release view backups --json assets --jq '.assets[].name' || echo "")
+          for asset in $assets; do
+            if [[ "$asset" == var-lib-pterodactyl-us-node-1.part* ]]; then
+              gh release delete-asset backups "$asset" -y || true
+              echo "✅ Deleted old asset: $asset"
+            fi
+          done
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Upload multipart backup files to GitHub Release
-      if: always()
-      uses: softprops/action-gh-release@v1
-      with:
-        tag_name: backups
-        name: "Latest /var/lib/pterodactyl Multipart Backup"
-        body: "/var/lib/pterodactyl backup (multipart)"
-        files: var-lib-pterodactyl-us-node-1.part*
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload multipart backup files to GitHub Release
+        if: always()
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: backups
+          name: "Latest /var/lib/pterodactyl Multipart Backup"
+          body: "/var/lib/pterodactyl backup (multipart)"
+          files: var-lib-pterodactyl-us-node-1.part*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           
       - name: Restart Workflow
         if: always()
