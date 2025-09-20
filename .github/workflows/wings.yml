@@ -84,6 +84,8 @@ jobs:
       - name: Sleep for 20000s
         run: |
           sleep 20000
+          cd pterodactyl/wings
+          docker-compose down
                      
       - name: Backup /var/lib/pterodactyl into multipart files
         if: always()
